@@ -5,21 +5,44 @@ library(shiny)
 library(tidyverse)
 
 ui <- fluidPage(
-   
+  h3("ANDROMEDA-SHOCK: Bayesian Re-Analysis"),
+  hr(),
+  uiOutput("link_paper"),
+  uiOutput("link_discourse"),
+  br(),
+  renderText(expr = output$paper_link),
    sidebarLayout(
       sidebarPanel(
          sliderInput("theta",
                      "Prior Mean:",
-                     min = 0.1,
-                     max = 2,
+                     min = 0.5,
+                     max = 1.25,
                      value = 1,
-                     step = 0.01),
+                     step = 0.01,
+                     ticks = FALSE),
+         hr(),
+         sliderInput("hr",
+                     "Cutoff for HR for computing the width of the prior distribution (e.g., MCID):",
+                     min = 0.25,
+                     max = 1.25,
+                     value = 0.5,
+                     step = 0.01,
+                     ticks = FALSE),
+         sliderInput("pr",
+                     "Probability that the HR is less than this cutoff:",
+                     min = 0,
+                     max = 1,
+                     value = 0.05,
+                     step = 0.01,
+                     ticks = FALSE),
+         hr(),
          sliderInput("sd",
                      "Prior SD:",
-                     min = 0.01,
+                     min = 0.1,
                      max = 1,
-                     value = 0.3,
-                     step = 0.01)
+                     value = 0.42,
+                     step = 0.01,
+                     ticks = FALSE)
       ),
       
       # Show a plot of the generated distributions
@@ -29,12 +52,9 @@ ui <- fluidPage(
    )
 )
 
-server <- function(input, output) {
+server <- function(input, output, session) {
    
-  # Calculating MCID
-  
-  # Here I am using the estimated reductions from the power calculation to get an 
-  # OR for the MCID (may need to be converted to RR instead of OR)#
+  # Calculating MCID using the estimated reductions from the power calculation 
   
   a <- 0.3 * 420 # Intervention and Outcome
   b <- 0.45 * 420 # Control and Outcome
@@ -43,14 +63,58 @@ server <- function(input, output) {
   
   MCID <- ((a+0.5) * (d+0.5))/((b+0.5) * (c+0.5))
   
-  #Hazard Ratio
-  
+  # Publication Data
   HR <- 0.75
   UC <- 1.02
   
   # Calculate Priors
-  prior.theta <- reactive({log(input$theta)})
-  prior.sd <- reactive({input$sd})
+  theta_in <- reactive({input$theta})
+  sd_in <- reactive({input$sd})
+  hr_in <- reactive({input$hr})
+  pr_in <- reactive({input$pr})
+  
+  # Update sliders based on SD and Pr and HR
+  observeEvent(input$sd, {
+    updateSliderInput(session,
+                      inputId = "pr",
+                      label = "Probability that the HR is less than this cutoff:",
+                      value = round(pnorm(log(hr_in()), log(theta_in()), sd_in()), 3)
+    )
+  })
+  
+  observeEvent(input$hr, {
+    updateSliderInput(session,
+                      inputId = "pr",
+                      label = "Probability that the HR is less than this cutoff:",
+                      value = round(pnorm(log(hr_in()), log(theta_in()), sd_in()), 3),
+                      min = round(pnorm(log(hr_in()), log(theta_in()), 0.1), 3),
+                      max = round(pnorm(log(hr_in()), log(theta_in()), 1), 3)
+                      )
+
+  })
+  
+  observeEvent(input$theta, {
+    updateSliderInput(session,
+                      inputId = "pr",
+                      label = "Probability that the HR is less than this cutoff:",
+                      value = round(pnorm(log(hr_in()), log(theta_in()), sd_in()), 3),
+                      min = round(pnorm(log(hr_in()), log(theta_in()), 0.1), 3),
+                      max = round(pnorm(log(hr_in()), log(theta_in()), 1), 3)
+                      )
+  })
+  
+  observeEvent(input$pr, {
+    updateSliderInput(session,
+                      inputId = "sd",
+                      label = "Prior SD:",
+                      value = round((log(hr_in()) - log(theta_in()))/qnorm(pr_in()), 3)
+                      
+                      ## prior.sd <- (log(1.0)-log(MCID-0.05))/1.96
+    )
+  })
+  
+  prior.theta <- reactive({log(theta_in())})
+  prior.sd <- reactive({sd_in()})
   
   # Calculate Likelihood
   L.theta <- log(HR)
@@ -61,7 +125,7 @@ server <- function(input, output) {
   post.sd <- reactive({sqrt(1/((1/(prior.sd())^2)+(1/L.sd^2)))})
   
   # Plot data
-  x <- seq(-3, 3, by = 0.025)
+  x <- seq(-3, 3, by = 0.01)
   prior_plot <- reactive({dnorm(x, prior.theta(), prior.sd())})
   likelihood_plot <- dnorm(x, L.theta, L.sd)
   posterior_plot <- reactive({dnorm(x, post.theta(), post.sd())})
@@ -101,12 +165,6 @@ server <- function(input, output) {
                                           lower.tail = TRUE), 3), sep = ""),
                 x = 2, y = max(plot_data()$y), hjust = 1,
                 fontface = "bold") + 
-       annotate(geom = "text",
-                label = paste("Probability of Prior > MCID: ", 
-                              round(pnorm(log(MCID), prior.theta(), prior.sd(), 
-                                          lower.tail = TRUE), 3), sep = ""),
-                x = 2, y = max(plot_data()$y) - max(plot_data()$y) / 15, hjust = 1,
-                fontface = "bold") + 
        theme_classic() + 
        theme(
          legend.position = "bottom",
@@ -117,6 +175,18 @@ server <- function(input, output) {
          axis.text = element_text(size = 12),
          legend.text = element_text(size = 12)
        )
+   })
+   
+   # Link for paper
+   url_paper <- a("Original Paper", 
+                  href="https://jamanetwork.com/journals/jama/fullarticle/2724361")
+   url_discourse <- a("DataMethods Discussion", 
+                      href="https://discourse.datamethods.org/t/andromeda-shock-or-how-to-intepret-hr-0-76-95-ci-0-55-1-02-p-0-06/1349")
+   output$link_paper <- renderUI({
+     tagList(url_paper)
+   })
+   output$link_discourse <- renderUI({
+     tagList(url_discourse)
    })
 }
 
