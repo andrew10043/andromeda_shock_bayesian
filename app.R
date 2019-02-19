@@ -4,9 +4,12 @@
 library(shiny)
 library(tidyverse)
 
-ui <- fluidPage(
-  h3("ANDROMEDA-SHOCK: Bayesian Re-Analysis"),
-  hr(),
+ui <- bootstrapPage(
+  shinyUI(
+    navbarPage("ANDROMEDA-SHOCK Bayesian Re-Analysis", id = "tabs",
+    tabPanel("Distributions",
+
+  fluidPage(
   sidebarPanel(
          sliderInput("theta",
                      "Prior Mean:",
@@ -58,7 +61,18 @@ ui <- fluidPage(
   )
   )
    )
-
+    ),
+  
+  tabPanel("Heat Plot",
+           fluidPage(
+           mainPanel(
+             h5("This heat plot shows the relative effects of changing the prior's mean and SD on the posterior probability of HR < 1."),
+             hr(),
+             plotOutput("heatPlot")
+           )
+  ))
+  ))
+)
 
 server <- function(input, output, session) {
    
@@ -193,6 +207,44 @@ server <- function(input, output, session) {
        )
    })
    
+   # Heat data
+   theta_list <- seq(from = 0.5, to = 1.5, by = 0.01)
+   sd_list <- seq(from = 0.1, to = 0.8, length = length(theta_list))
+   
+    heat_data <-
+     tibble(
+       prior_theta = rep(theta_list, each = length(theta_list)),
+       prior_sd = rep(sd_list, times = length(sd_list))
+     ) %>%
+     mutate(
+       post_theta = ((log(prior_theta)/(prior_sd)^2)+(L.theta/L.sd^2))/((1/(prior_sd)^2)+(1/L.sd^2)),
+       post_sd = sqrt(1/((1/(prior_sd)^2)+(1/L.sd^2))),
+       p_hr = pnorm(log(1), post_theta, post_sd, 
+                    lower.tail = TRUE)
+     )
+  
+   # Dynamic Heat Plot
+   output$heatPlot <- renderPlot({
+     heat_data %>%
+       ggplot(aes(x = prior_theta, y = prior_sd)) + 
+       geom_tile(aes(fill = p_hr)) + 
+       scale_fill_viridis_c(name = "Posterior Probabilty HR < 1",
+                            breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + 
+       labs(
+         x = "Prior Mean",
+         y = "Prior SD"
+       ) + 
+       theme_classic() + 
+       theme(
+         text = element_text(family = "Gill Sans MT"),
+         axis.title = element_text(size = 15),
+         axis.text = element_text(size = 12),
+         legend.text = element_text(size = 10),
+         legend.title = element_text(size = 12),
+         legend.position = "right"
+       )
+   })
+   
    # Link for paper
    url_paper <- a("JAMA", 
                   href="https://jamanetwork.com/journals/jama/fullarticle/2724361")
@@ -217,8 +269,7 @@ server <- function(input, output, session) {
    output$link_twitter <- renderUI({
      tagList("This is an interactive Bayesian re-analysis of the ANDROMEDA-SHOCK trial published in JAMA. Code by Dan Lane", url_dlt, "and adapted by Ben Andrew", url_bat, "Update the prior distribution using the sliders above by either (1) setting the prior SD directly or (2) setting a HR threshold and probability mass of the prior to lie below that threshold.") 
    })
-}
 
+}
 # Run the application 
 shinyApp(ui = ui, server = server)
-
