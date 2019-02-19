@@ -7,12 +7,7 @@ library(tidyverse)
 ui <- fluidPage(
   h3("ANDROMEDA-SHOCK: Bayesian Re-Analysis"),
   hr(),
-  uiOutput("link_paper"),
-  uiOutput("link_discourse"),
-  br(),
-  renderText(expr = output$paper_link),
-   sidebarLayout(
-      sidebarPanel(
+  sidebarPanel(
          sliderInput("theta",
                      "Prior Mean:",
                      min = 0.5,
@@ -48,9 +43,22 @@ ui <- fluidPage(
       # Show a plot of the generated distributions
       mainPanel(
          plotOutput("distPlot")
-      )
+      ),
+
+  fluidRow(column(12,
+                  hr(),
+                  h4("About this Application:"),
+                  uiOutput("link_twitter"),
+                  br(),
+                  uiOutput("link_paper"),
+                  uiOutput("link_discourse"),
+                  uiOutput("link_email"),
+                  br(),
+                  renderText(expr = output$paper_link)
+  )
+  )
    )
-)
+
 
 server <- function(input, output, session) {
    
@@ -178,15 +186,28 @@ server <- function(input, output, session) {
    })
    
    # Link for paper
-   url_paper <- a("Original Paper", 
+   url_paper <- a("JAMA", 
                   href="https://jamanetwork.com/journals/jama/fullarticle/2724361")
-   url_discourse <- a("DataMethods Discussion", 
+   url_discourse <- a("DataMethods", 
                       href="https://discourse.datamethods.org/t/andromeda-shock-or-how-to-intepret-hr-0-76-95-ci-0-55-1-02-p-0-06/1349")
-   output$link_paper <- renderUI({
-     tagList(url_paper)
+   url_email <- a("benjamin.andrew@duke.edu", 
+                  href="mailto:benjamin.andrew@duke.edu")
+   url_bat <- a("(@BenYAndrew).", 
+                href="https://twitter.com/BenYAndrew")
+   url_dlt <- a("(@DaneLane911)", 
+                href="https://twitter.com/DanLane911")
+   
+    output$link_paper <- renderUI({
+     tagList("Original paper: ", url_paper)
    })
    output$link_discourse <- renderUI({
-     tagList(url_discourse)
+     tagList("Discussion: ", url_discourse)
+   })
+   output$link_email <- renderUI({
+     tagList("Questions & Improvements: ", url_email)
+   })
+   output$link_twitter <- renderUI({
+     tagList("This is an interactive Bayesian re-analysis of the ANDROMEDA-SHOCK trial published in JAMA. Code by Dan Lane", url_dlt, "and adapted by Ben Andrew", url_bat, "Update the prior distribution using the sliders above by either (1) setting the prior SD directly or (2) setting a HR threshold and probability mass of the prior to lie below that threshold.") 
    })
 }
 
