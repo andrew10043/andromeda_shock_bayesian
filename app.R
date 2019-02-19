@@ -173,6 +173,14 @@ server <- function(input, output, session) {
                                           lower.tail = TRUE), 3), sep = ""),
                 x = 2, y = max(plot_data()$y), hjust = 1,
                 fontface = "bold") + 
+       annotate(geom = "text",
+                label = paste("Posterior median (89% credible interval): ",
+                              round(exp(qnorm(0.055, post.theta(), post.sd())), 2),
+                              paste(" (", round(exp(qnorm(0.5, post.theta(), post.sd())), 2), sep = ""),
+                              paste(", ", round(exp(qnorm(0.945, post.theta(), post.sd())), 2), sep = ""),
+                              paste(")", sep = ""), sep = ""),
+                x = 2, y = max(plot_data()$y) - (max(plot_data()$y)/15), hjust = 1,
+                fontface = "bold") + 
        theme_classic() + 
        theme(
          legend.position = "bottom",
