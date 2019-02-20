@@ -40,6 +40,15 @@ ui <- bootstrapPage(
                              max = 1,
                              value = 0.42,
                              step = 0.01,
+                             ticks = FALSE),
+                 hr(),
+                 sliderInput("ci",
+                             "Credible Interval: ",
+                             value = 89,
+                             min = 60,
+                             max = 99,
+                             step = 1,
+                             post = "%",
                              ticks = FALSE)
                  ),
                
@@ -139,7 +148,7 @@ server <- function(input, output, session) {
   
   # Calculate Likelihood Parameters
   likelihood_theta <- log(HR)
-  likelihood_sd <- (log(HR) - log(UC))/qnorm(0.06)
+  likelihood_sd <- (log(HR) - log(UC))/qnorm(0.025) # SD from 95% CI in trial
   
   # Calculate Posterior Parameters
   post_theta <- reactive({
@@ -169,6 +178,9 @@ server <- function(input, output, session) {
       
   })
   
+  # Credible interval
+  ci_in <- reactive({input$ci})
+  
   # Dynamic Plot
    output$distPlot <- renderPlot({
      plot_data() %>%
@@ -192,11 +204,12 @@ server <- function(input, output, session) {
                 x = 2, y = max(plot_data()$y), hjust = 1,
                 fontface = "bold") + 
        annotate(geom = "text",
-                label = paste("Posterior median (89% credible interval): ",
-                              round(exp(qnorm(0.055, post_theta(), post_sd())), 2),
+                label = paste("Posterior median (", ci_in(),
+                              paste("% credible interval): ",
+                              round(exp(qnorm((1 - (ci_in()/100)) / 2, post_theta(), post_sd())), 2),
                               paste(" (", round(exp(qnorm(0.5, post_theta(), post_sd())), 2), sep = ""),
-                              paste(", ", round(exp(qnorm(0.945, post_theta(), post_sd())), 2), sep = ""),
-                              paste(")", sep = ""), sep = ""),
+                              paste(", ", round(exp(qnorm(1 - (1 - (ci_in()/100)) / 2, post_theta(), post_sd())), 2), sep = ""),
+                              paste(")", sep = ""), sep = ""), sep = ""),
                 x = 2, y = max(plot_data()$y) - (max(plot_data()$y)/15), hjust = 1,
                 fontface = "bold") + 
        theme_classic() + 
@@ -209,7 +222,7 @@ server <- function(input, output, session) {
          axis.text = element_text(size = 12),
          legend.text = element_text(size = 12)
        )
-   })
+   }, height = 570)
    
    # Heat data
    theta_list <- seq(from = 0.5, to = 1.5, by = 0.01)
