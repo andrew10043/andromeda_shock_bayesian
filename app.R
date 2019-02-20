@@ -6,72 +6,73 @@ library(tidyverse)
 
 ui <- bootstrapPage(
   shinyUI(
-    navbarPage("ANDROMEDA-SHOCK Bayesian Re-Analysis", id = "tabs",
+    navbarPage("ANDROMEDA-SHOCK Bayesian Re-Analysis", 
+               id = "tabs",
     tabPanel("Distributions",
-
-  fluidPage(
-  sidebarPanel(
-         sliderInput("theta",
-                     "Prior Mean:",
-                     min = 0.5,
-                     max = 1.25,
-                     value = 1,
-                     step = 0.01,
-                     ticks = FALSE),
-         hr(),
-         sliderInput("hr",
-                     "Cutoff for HR for computing the width of the prior distribution (e.g., MCID):",
-                     min = 0.25,
-                     max = 1.25,
-                     value = 0.5,
-                     step = 0.01,
-                     ticks = FALSE),
-         sliderInput("pr",
-                     "Probability that the HR is less than this cutoff:",
-                     min = 0,
-                     max = 1,
-                     value = 0.05,
-                     step = 0.01,
-                     ticks = FALSE),
-         hr(),
-         sliderInput("sd",
-                     "Prior SD:",
-                     min = 0.1,
-                     max = 1,
-                     value = 0.42,
-                     step = 0.01,
-                     ticks = FALSE)
-      ),
-      
-      # Show a plot of the generated distributions
-      mainPanel(
-         plotOutput("distPlot")
-      ),
-
-  fluidRow(column(12,
-                  hr(),
-                  h4("About this Application:"),
-                  uiOutput("link_twitter"),
-                  br(),
-                  uiOutput("link_paper"),
-                  uiOutput("link_discourse"),
-                  uiOutput("link_email"),
-                  br(),
-                  renderText(expr = output$paper_link)
-  )
-  )
-   )
-    ),
-  
-  tabPanel("Heat Plot",
-           fluidPage(
-           mainPanel(
-             h5("This heat plot shows the relative effects of changing the prior's mean and SD on the posterior probability of HR < 1."),
-             hr(),
-             plotOutput("heatPlot")
-           )
-  ))
-  ))
+             fluidPage(
+               sidebarPanel(
+                 sliderInput("theta",
+                             "Prior Mean:",
+                             min = 0.5,
+                             max = 1.25,
+                             value = 1,
+                             step = 0.01,
+                             ticks = FALSE),
+                 hr(),
+                 sliderInput("hr",
+                             "Cutoff for HR for computing the width of the prior distribution (e.g., MCID):",
+                             min = 0.25,
+                             max = 1.25,
+                             value = 0.5,
+                             step = 0.01,
+                             ticks = FALSE),
+                 sliderInput("pr",
+                             "Probability that the HR is less than this cutoff:",
+                             min = 0,
+                             max = 1,
+                             value = 0.05,
+                             step = 0.01,
+                             ticks = FALSE),
+                 hr(),
+                 sliderInput("sd",
+                             "Prior SD:",
+                             min = 0.1,
+                             max = 1,
+                             value = 0.42,
+                             step = 0.01,
+                             ticks = FALSE)
+                 ),
+               
+               # Show a plot of the generated distributions
+               mainPanel(plotOutput("distPlot")
+                         ),
+               
+               fluidRow(column(12,
+                        hr(),
+                        h4("About this Application:"),
+                        uiOutput("link_twitter"),
+                        br(),
+                        uiOutput("link_paper"),
+                        uiOutput("link_discourse"),
+                        uiOutput("link_email"),
+                        br(),
+                        renderText(expr = output$paper_link)
+                        )
+                        )
+               )
+             ),
+    
+    tabPanel("Heat Plot",
+             fluidPage(
+               mainPanel(
+                 h5("This heat plot shows the relative effects of changing the prior's mean and SD on the posterior probability of HR < 1."),
+                 hr(),
+                 plotOutput("heatPlot")
+                 )
+               )
+             )
+    )
+    )
 )
 
 server <- function(input, output, session) {
@@ -130,27 +131,30 @@ server <- function(input, output, session) {
                       inputId = "sd",
                       label = "Prior SD:",
                       value = round((log(hr_in()) - log(theta_in()))/qnorm(pr_in()), 3)
-                      
-                      ## prior.sd <- (log(1.0)-log(MCID-0.05))/1.96
     )
   })
   
-  prior.theta <- reactive({log(theta_in())})
-  prior.sd <- reactive({sd_in()})
+  prior_theta <- reactive({log(theta_in())})
+  prior_sd <- reactive({sd_in()})
   
-  # Calculate Likelihood
-  L.theta <- log(HR)
-  L.sd <- (log(UC)-log(HR))/1.96
+  # Calculate Likelihood Parameters
+  likelihood_theta <- log(HR)
+  likelihood_sd <- (log(HR) - log(UC))/qnorm(0.06)
   
-  # Calculate Posterior
-  post.theta <- reactive({((prior.theta()/(prior.sd())^2)+(L.theta/L.sd^2))/((1/(prior.sd())^2)+(1/L.sd^2))})
-  post.sd <- reactive({sqrt(1/((1/(prior.sd())^2)+(1/L.sd^2)))})
+  # Calculate Posterior Parameters
+  post_theta <- reactive({
+    ((prior_theta() / (prior_sd())^2)+(likelihood_theta / likelihood_sd^2)) / 
+      ((1 / (prior_sd())^2) + (1 / likelihood_sd^2))
+    })
+  post_sd <- reactive({
+    sqrt(1 / ((1 / (prior_sd())^2) + (1 / likelihood_sd^2)))
+    })
   
   # Plot data
   x <- seq(-3, 3, by = 0.01)
-  prior_plot <- reactive({dnorm(x, prior.theta(), prior.sd())})
-  likelihood_plot <- dnorm(x, L.theta, L.sd)
-  posterior_plot <- reactive({dnorm(x, post.theta(), post.sd())})
+  prior_plot <- reactive({dnorm(x, prior_theta(), prior_sd())})
+  likelihood_plot <- dnorm(x, likelihood_theta, likelihood_sd)
+  posterior_plot <- reactive({dnorm(x, post_theta(), post_sd())})
   
   plot_data <- reactive({
     tibble(
@@ -183,15 +187,15 @@ server <- function(input, output, session) {
        ) + 
        annotate(geom = "text",
                 label = paste("Posterior Probability HR < 1: ", 
-                              round(pnorm(log(1), post.theta(), post.sd(), 
+                              round(pnorm(log(1), post_theta(), post_sd(), 
                                           lower.tail = TRUE), 3), sep = ""),
                 x = 2, y = max(plot_data()$y), hjust = 1,
                 fontface = "bold") + 
        annotate(geom = "text",
                 label = paste("Posterior median (89% credible interval): ",
-                              round(exp(qnorm(0.055, post.theta(), post.sd())), 2),
-                              paste(" (", round(exp(qnorm(0.5, post.theta(), post.sd())), 2), sep = ""),
-                              paste(", ", round(exp(qnorm(0.945, post.theta(), post.sd())), 2), sep = ""),
+                              round(exp(qnorm(0.055, post_theta(), post_sd())), 2),
+                              paste(" (", round(exp(qnorm(0.5, post_theta(), post_sd())), 2), sep = ""),
+                              paste(", ", round(exp(qnorm(0.945, post_theta(), post_sd())), 2), sep = ""),
                               paste(")", sep = ""), sep = ""),
                 x = 2, y = max(plot_data()$y) - (max(plot_data()$y)/15), hjust = 1,
                 fontface = "bold") + 
@@ -217,10 +221,10 @@ server <- function(input, output, session) {
        prior_sd = rep(sd_list, times = length(sd_list))
      ) %>%
      mutate(
-       post_theta = ((log(prior_theta)/(prior_sd)^2)+(L.theta/L.sd^2))/((1/(prior_sd)^2)+(1/L.sd^2)),
-       post_sd = sqrt(1/((1/(prior_sd)^2)+(1/L.sd^2))),
-       p_hr = pnorm(log(1), post_theta, post_sd, 
-                    lower.tail = TRUE)
+       post_theta = ((log(prior_theta) / (prior_sd)^2)+(likelihood_theta / likelihood_sd^2)) / 
+         ((1 / (prior_sd)^2)+(1 / likelihood_sd^2)),
+       post_sd = sqrt(1 / ((1 / (prior_sd)^2) + (1 / likelihood_sd^2))),
+       p_hr = pnorm(log(1), post_theta, post_sd, lower.tail = TRUE)
      )
   
    # Dynamic Heat Plot
