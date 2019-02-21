@@ -56,7 +56,15 @@ ui <- bootstrapPage(
                              max = 99,
                              step = 1,
                              post = "%",
+                             ticks = FALSE),
+                 sliderInput("hr_post",
+                             "Posterior HR of Interest: ",
+                             min = 0.5,
+                             max = 1.25,
+                             value = 0.9,
+                             step = 0.01,
                              ticks = FALSE)
+                 
                  ),
                
                # Show a plot of the generated distributions
@@ -78,16 +86,29 @@ ui <- bootstrapPage(
                )
              ),
     
-    tabPanel("Heat Plot",
+    tabPanel("Heat Map",
              fluidPage(
+               fluidRow(column(12,
+                               h4("Interactive Heat Map:"),
+                               uiOutput("heat_text"),
+                               hr()
+                               ),
+               sidebarPanel(
+                 sliderInput("hr_heat",
+                             "Posterior HR of Interest:",
+                             min = 0.5,
+                             max = 1.25,
+                             value = 0.9,
+                             step = 0.01,
+                             ticks = FALSE)
+               ),
                mainPanel(
-                 h5("This heat plot shows the relative effects of changing the prior's mean and SD on the posterior probability of HR < 1."),
-                 hr(),
                  plotOutput("heatPlot")
                  )
                )
+               )
+               )
              )
-    )
     )
 )
 
@@ -155,7 +176,7 @@ server <- function(input, output, session) {
   
   # Calculate Likelihood Parameters
   likelihood_theta <- log(HR)
-  likelihood_sd <- (log(HR) - log(UC))/qnorm(0.025) # SD from 95% CI in trial
+  likelihood_sd <- (log(UC) - log(HR)) / qnorm(0.975) # SD from 95% CI in trial
   
   # Calculate Posterior Parameters
   post_theta <- reactive({
@@ -188,6 +209,9 @@ server <- function(input, output, session) {
   # Credible interval
   ci_in <- reactive({input$ci})
   
+  # HR Post
+  hr_post <- reactive({input$hr_post})
+  
   # Dynamic Plot
    output$distPlot <- renderPlot({
      plot_data() %>%
@@ -195,7 +219,7 @@ server <- function(input, output, session) {
        geom_vline(xintercept = 1, linetype = "dashed",
                   color = "grey50", alpha = 0.75) + 
        geom_line(aes(color = dist),
-                 size = 0.75) + 
+                 size = 1.1) + 
        scale_color_brewer(name = NULL, type = "qual", palette = "Dark2",
                           breaks = c("prior", "likelihood", "posterior"),
                           labels = c("Prior", "Likelihood", "Posterior")) + 
@@ -205,10 +229,16 @@ server <- function(input, output, session) {
          y = "Probability Density"
        ) + 
        annotate(geom = "text",
-                label = paste("Posterior Probability HR < 1: ", 
+                label = paste("Posterior probability HR < 1: ", 
                               round(pnorm(log(1), post_theta(), post_sd(), 
                                           lower.tail = TRUE), 3), sep = ""),
                 x = 2, y = max(plot_data()$y), hjust = 1,
+                fontface = "bold") + 
+       annotate(geom = "text",
+                label = paste("Posterior probability HR < ", hr_post(),
+                              paste(": ", round(pnorm(log(hr_post()), post_theta(), post_sd(),
+                                                          lower.tail = TRUE), 3), sep = ""), sep = ""),
+                x = 2, y = max(plot_data()$y) - max(plot_data()$y/25), hjust = 1,
                 fontface = "bold") + 
        annotate(geom = "text",
                 label = paste("Posterior median (", ci_in(),
@@ -217,7 +247,7 @@ server <- function(input, output, session) {
                                     paste(" (", round(exp(qnorm((1 - (ci_in()/100)) / 2, post_theta(), post_sd())), 2), sep = ""),
                               paste(", ", round(exp(qnorm(1 - (1 - (ci_in()/100)) / 2, post_theta(), post_sd())), 2), sep = ""),
                               paste(")", sep = ""), sep = ""), sep = ""),
-                x = 2, y = max(plot_data()$y) - (max(plot_data()$y)/15), hjust = 1,
+                x = 2, y = max(plot_data()$y) - (2 * max(plot_data()$y)/25), hjust = 1,
                 fontface = "bold") + 
        theme_classic() + 
        theme(
@@ -227,15 +257,18 @@ server <- function(input, output, session) {
          axis.text.y = element_blank(),
          axis.title = element_text(size = 15),
          axis.text = element_text(size = 12),
-         legend.text = element_text(size = 12)
+         legend.text = element_text(size = 15)
        )
-   }, height = 570)
+   }, height = 620)
+   
+   # HR Heat
+   hr_heat <- reactive({input$hr_heat})
    
    # Heat data
    theta_list <- seq(from = 0.5, to = 1.5, by = 0.01)
    sd_list <- seq(from = 0.1, to = 0.8, length = length(theta_list))
    
-    heat_data <-
+    heat_data <- reactive({
      tibble(
        prior_theta = rep(theta_list, each = length(theta_list)),
        prior_sd = rep(sd_list, times = length(sd_list))
@@ -244,16 +277,18 @@ server <- function(input, output, session) {
        post_theta = ((log(prior_theta) / (prior_sd)^2)+(likelihood_theta / likelihood_sd^2)) / 
          ((1 / (prior_sd)^2)+(1 / likelihood_sd^2)),
        post_sd = sqrt(1 / ((1 / (prior_sd)^2) + (1 / likelihood_sd^2))),
-       p_hr = pnorm(log(1), post_theta, post_sd, lower.tail = TRUE)
+       p_hr = pnorm(log(hr_heat()), post_theta, post_sd, lower.tail = TRUE)
      )
+    })
   
    # Dynamic Heat Plot
    output$heatPlot <- renderPlot({
-     heat_data %>%
+     heat_data() %>%
        ggplot(aes(x = prior_theta, y = prior_sd)) + 
        geom_tile(aes(fill = p_hr)) + 
-       scale_fill_viridis_c(name = "Posterior Probabilty HR < 1",
-                            breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1)) + 
+       scale_fill_viridis_c(name = paste("Posterior Probabilty HR < ", hr_heat(), sep = ""),
+                            begin = min(heat_data()$p_hr),
+                            end = max(heat_data()$p_hr)) + 
        labs(
          x = "Prior Mean",
          y = "Prior SD"
@@ -263,11 +298,11 @@ server <- function(input, output, session) {
          text = element_text(family = "Gill Sans MT"),
          axis.title = element_text(size = 15),
          axis.text = element_text(size = 12),
-         legend.text = element_text(size = 10),
-         legend.title = element_text(size = 12),
+         legend.text = element_text(size = 12),
+         legend.title = element_text(size = 14),
          legend.position = "right"
        )
-   })
+   }, width = 750, height = 550)
    
    # Link for paper
    url_paper <- a("JAMA", 
@@ -278,7 +313,7 @@ server <- function(input, output, session) {
                   href="mailto:benjamin.andrew@duke.edu")
    url_bat <- a("(@BenYAndrew).", 
                 href="https://twitter.com/BenYAndrew")
-   url_dlt <- a("(@DaneLane911)", 
+   url_dlt <- a("(@DanLane911)", 
                 href="https://twitter.com/DanLane911")
    
     output$link_paper <- renderUI({
@@ -292,6 +327,9 @@ server <- function(input, output, session) {
    })
    output$link_twitter <- renderUI({
      tagList("This is an interactive Bayesian re-analysis of the ANDROMEDA-SHOCK trial published in JAMA. Code by Dan Lane", url_dlt, "and adapted by Ben Andrew", url_bat, "Update the prior distribution using the sliders above by either (1) setting the prior SD directly or (2) setting a HR threshold and probability mass of the prior to lie below that threshold.") 
+   })
+   output$heat_text <- renderUI({
+     tagList("Use the slider below to select a posterior HR of interest. The heat map will display the posterior probability of HR < your selected value for all combinations of the prior's mean and SD.") 
    })
 
 }
