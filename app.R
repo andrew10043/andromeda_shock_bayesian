@@ -113,15 +113,6 @@ ui <- bootstrapPage(
 )
 
 server <- function(input, output, session) {
-   
-  # Calculating MCID using the estimated reductions from the power calculation 
-  
-  a <- 0.3 * 420 # Intervention and Outcome
-  b <- 0.45 * 420 # Control and Outcome
-  c <- 420 - a # Intervention No Outcome
-  d <- 420 - b # Control No Outcome
-  
-  MCID <- ((a+0.5) * (d+0.5))/((b+0.5) * (c+0.5))
   
   # Publication Data
   HR <- 0.75
